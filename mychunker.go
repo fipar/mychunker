@@ -106,9 +106,15 @@ func dumpChunk(cc string, lower int, upper int, isThread bool) {
 	rows, _, _ := db.Query("select * from " + schema + "." + table + " where " + cc + " between " + strconv.Itoa(lower) + " and " + strconv.Itoa(upper))
 	for _, row := range rows {
 		line := ""
+
 		for idx, _ := range row {
-			line += row.Str(idx) + ","
+			comma := ","
+			if idx == len(row)-1 {
+				comma = ""
+			}
+			line += row.Str(idx) + comma
 		}
+
 		out.WriteString(line + "\n")
 	}
 }
