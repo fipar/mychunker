@@ -44,6 +44,10 @@ func processArgs() {
 	flag.IntVar(&threads, "threads", 4, "The number of threads. Defaults to 4")
 	flag.BoolVar(&verbose, "verbose", false, "Be verbose")
 	flag.Parse()
+	if flag.NFlag() == 0 {
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
 }
 
 // so that I can do the same as panic() but without printing the stack trace to the user
