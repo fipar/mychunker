@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	verbose                                   bool
-	host, user, password, port, schema, table string
-	chunkSize, threads, running               int
-	db                                        *autorc.Conn
-	lock                                      sync.Mutex
-	wg                                        sync.WaitGroup
+	verbose                                         bool
+	host, user, password, port, schema, table, path string
+	chunkSize, threads, running                     int
+	db                                              *autorc.Conn
+	lock                                            sync.Mutex
+	wg                                              sync.WaitGroup
 )
 
 func main() {
@@ -40,6 +40,7 @@ func processArgs() {
 	flag.StringVar(&schema, "schema", "test", "The database schema. Defaults to test")
 	flag.StringVar(&table, "table", "test", "The table to dump. Defaults to test")
 	flag.StringVar(&port, "port", "3306", "The database port. Defaults to 3306")
+	flag.StringVar(&path, "path", ".", "The path where the files will be created. Defaults to .")
 	flag.IntVar(&chunkSize, "chunkSize", 1000, "The chunk size. Defaults to 1000")
 	flag.IntVar(&threads, "threads", 4, "The number of threads. Defaults to 4")
 	flag.BoolVar(&verbose, "verbose", false, "Be verbose")
@@ -101,7 +102,7 @@ func dumpChunk(cc string, lower int, upper int, isThread bool) {
 	if isThread {
 		wg.Add(1)
 	}
-	out, _ = os.Create(schema + "." + table + "." + strconv.Itoa(lower) + "." + strconv.Itoa(upper) + ".csv")
+	out, _ = os.Create(path + "/" + schema + "." + table + "." + strconv.Itoa(lower) + "." + strconv.Itoa(upper) + ".csv")
 	rows, _, _ := db.Query("select * from " + schema + "." + table + " where " + cc + " between " + strconv.Itoa(lower) + " and " + strconv.Itoa(upper))
 	for _, row := range rows {
 		line := ""
