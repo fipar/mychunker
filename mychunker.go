@@ -84,9 +84,10 @@ func dumpTable(cc string, min int, max int) {
 }
 
 // dumps a specific chunk
-// TODO: remove final comma, possibly look for a function like join()
+// chunk will be delimited by cc (chunk column), values bewteen lower and upper
 func dumpChunk(cc string, lower int, upper int, isThread bool) {
 	var out *os.File
+	dbcon := db
 	defer func() {
 		if isThread {
 			lock.Lock()
@@ -101,9 +102,10 @@ func dumpChunk(cc string, lower int, upper int, isThread bool) {
 	}()
 	if isThread {
 		wg.Add(1)
+		//dbcon = autorc.New("tcp", "", host+":"+port, user, password, schema)
 	}
 	out, _ = os.Create(path + "/" + schema + "." + table + "." + strconv.Itoa(lower) + "." + strconv.Itoa(upper) + ".csv")
-	rows, _, _ := db.Query("select * from " + schema + "." + table + " where " + cc + " between " + strconv.Itoa(lower) + " and " + strconv.Itoa(upper))
+	rows, _, _ := dbcon.Query("select * from " + schema + "." + table + " where " + cc + " between " + strconv.Itoa(lower) + " and " + strconv.Itoa(upper))
 	for _, row := range rows {
 		line := ""
 
