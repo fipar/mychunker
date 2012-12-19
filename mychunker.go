@@ -14,20 +14,31 @@ import (
 	"sync"
 )
 
+type chunk struct {
+	lower int
+	upper int
+}
+
 var (
-	verbose                                         bool
-	host, user, password, port, schema, table, path string
-	chunkSize, threads, running                     int
-	db                                              *autorc.Conn
-	lock                                            sync.Mutex
-	wg                                              sync.WaitGroup
+	verbose, done                                       bool
+	host, user, password, port, schema, table, path, cc string
+	chunkSize, threads                                  int
+	db                                                  *autorc.Conn
+	cchunks                                             chan chunk
+	wg                                                  sync.WaitGroup
+	lock                                                sync.Mutex
 )
 
 func main() {
 	processArgs()
 	initMySQL()
+	cchunks = make(chan chunk)
+	var min, max int
 	cc, min, max := getChunkData()
 	debug("Will chunk on " + cc + ", min = " + strconv.Itoa(min) + ", max = " + strconv.Itoa(max))
+	lock.Lock()
+	done = false
+	lock.Unlock()
 	dumpTable(cc, min, max)
 	wg.Wait()
 }
@@ -66,58 +77,53 @@ func debug(message string) {
 
 // dumps the table, one chunk at a time
 func dumpTable(cc string, min int, max int) {
-	running = 0
-	for i := min; i < max; i += chunkSize {
-		shouldGo := false
-		lock.Lock()
-		if running < threads {
-			running++
-			shouldGo = true
-		}
-		lock.Unlock()
-		if shouldGo {
-			go dumpChunk(cc, i, i+chunkSize-1, true)
-		} else {
-			dumpChunk(cc, i, i+chunkSize-1, false)
-		}
+	for i := 0; i < threads; i++ {
+		go dumpChunk(cc)
+		wg.Add(1)
 	}
+	for i := min; i < max; i += chunkSize {
+		var c chunk
+		c.lower = i
+		c.upper = i + chunkSize - 1
+		cchunks <- c
+	}
+	lock.Lock()
+	done = true
+	lock.Unlock()
 }
 
-// dumps a specific chunk
-// chunk will be delimited by cc (chunk column), values bewteen lower and upper
-func dumpChunk(cc string, lower int, upper int, isThread bool) {
+// dumps a specific chunk, reading chunk info from the cchunk channel
+func dumpChunk(cc string) {
 	var out *os.File
-	dbcon := db
+	dbcon := autorc.New("tcp", "", host+":"+port, user, password, schema)
 	defer func() {
-		if isThread {
-			lock.Lock()
-			running--
-			lock.Unlock()
-			wg.Done()
-		}
 		out.Close()
 		if err := recover(); err != nil {
 			die(err.(error).Error())
 		}
+		wg.Done()
 	}()
-	if isThread {
-		wg.Add(1)
-		//dbcon = autorc.New("tcp", "", host+":"+port, user, password, schema)
-	}
-	out, _ = os.Create(path + "/" + schema + "." + table + "." + strconv.Itoa(lower) + "." + strconv.Itoa(upper) + ".csv")
-	rows, _, _ := dbcon.Query("select * from " + schema + "." + table + " where " + cc + " between " + strconv.Itoa(lower) + " and " + strconv.Itoa(upper))
-	for _, row := range rows {
-		line := ""
 
-		for idx, _ := range row {
-			comma := ","
-			if idx == len(row)-1 {
-				comma = ""
+	for {
+		cr := <-cchunks
+		out, _ = os.Create(path + "/" + schema + "." + table + "." + strconv.Itoa(cr.lower) + "." + strconv.Itoa(cr.upper) + ".csv")
+		rows, _, _ := dbcon.Query("select * from " + schema + "." + table + " where " + cc + " between " + strconv.Itoa(cr.lower) + " and " + strconv.Itoa(cr.upper))
+		for _, row := range rows {
+			line := ""
+
+			for idx, _ := range row {
+				comma := ","
+				if idx == len(row)-1 {
+					comma = ""
+				}
+				line += row.Str(idx) + comma
 			}
-			line += row.Str(idx) + comma
-		}
 
-		out.WriteString(line + "\n")
+			out.WriteString(line + "\n")
+		}
+		if done {
+			return
+		}
 	}
 }
 
